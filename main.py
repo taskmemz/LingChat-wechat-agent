@@ -116,6 +116,7 @@ async def main():
             logger.debug(f"Unhandled message: {envelope.type}")
 
     hub.on_message(on_message)
+    executor.monitor = monitor  # 让 executor 能复用活跃监听窗口
 
     try:
         await asyncio.gather(

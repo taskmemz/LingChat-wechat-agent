@@ -21,6 +21,8 @@ class ToolExecutor:
         self._pyweixin_loaded = False
         self._executor = None
         self._loop = None
+        self.monitor = None  # 由 main.py 设置
+        self._temp_window = None  # 临时窗口引用
 
     def _ensure_pyweixin(self):
         if self._pyweixin_loaded:
@@ -167,17 +169,32 @@ class ToolExecutor:
         import pyweixin.WeChatTools as wt
         from pyweixin.WeChatAuto import Messages
 
-        print(f"[SEND] open_dialog_window('{target[:20]}')...", flush=True)
-        main_window = wt.Navigator.open_dialog_window(
-            friend=target, search_pages=15
-        )
-        print(f"[SEND] send_messages_to_friend...", flush=True)
+        # 如果已有活跃监听窗口，直接复用
+        dialog = None
+        close_after = False
+        if self.monitor:
+            dialog = self.monitor.get_window(target)
+        if dialog is None:
+            print(f"[SEND] opening separate dialog for '{target[:20]}'...", flush=True)
+            dialog = wt.Navigator.open_seperate_dialog_window(
+                friend=target, close_weixin=False,
+            )
+            close_after = True
+
         Messages.send_messages_to_friend(
-            main_window=main_window,
+            main_window=dialog,
             messages=[content],
             send_delay=0.3,
         )
-        print(f"[SEND] done", flush=True)
+
+        if close_after:
+            try:
+                dialog.close()
+            except Exception:
+                pass
+            print(f"[SEND] done (temp window closed)", flush=True)
+        else:
+            print(f"[SEND] done (used existing listener window)", flush=True)
         return True
 
     def _tool_send_message(self, args: dict) -> dict:
