@@ -117,11 +117,20 @@ class MonitorService:
             return
 
         logger.info(f"[LISTENER] opening window for '{contact}'")
-        dialog = await asyncio.get_event_loop().run_in_executor(
-            None, self._open_separate, contact
-        )
+        try:
+            dialog = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, self._open_separate, contact
+                ),
+                timeout=15,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"[LISTENER] open_separate TIMEOUT, fallback to main window read")
+            await self._fallback_read_once(contact)
+            return
         if dialog is None:
-            logger.warning(f"[LISTENER] open_separate returned None for '{contact}'")
+            logger.warning(f"[LISTENER] open_separate returned None, fallback to main window read")
+            await self._fallback_read_once(contact)
             return
         logger.info(f"[LISTENER] window opened OK for '{contact}'")
 
@@ -228,8 +237,52 @@ class MonitorService:
         return "\n".join(added)
 
     # ============================================================
-    # 清理过期窗口
+    # 回退：独立窗口打不开时，直接从主窗口读一次
     # ============================================================
+
+    async def _fallback_read_once(self, contact: str):
+        """从主窗口读一次消息并转发，不创建监听器"""
+        from pyweixin.Uielements import Lists, SideBar, Main_window
+
+        def read():
+            with wechat_lock:
+                try:
+                    btn = self._main_window.child_window(**SideBar.Weixin)
+                    if btn.exists(timeout=0.5):
+                        btn.click_input()
+                    sl = self._main_window.child_window(**Main_window.SessionList)
+                    if not sl.exists(timeout=1):
+                        return ""
+                    for item in sl.children(control_type="ListItem"):
+                        try:
+                            aid = item.automation_id().replace("session_item_", "")
+                            if aid == contact:
+                                item.click_input()
+                                break
+                        except Exception:
+                            continue
+                    import time as _t
+                    _t.sleep(1)
+                    area = self._main_window.child_window(**Lists.FriendChatList)
+                    if not area.exists(timeout=2):
+                        return ""
+                    texts = []
+                    for ctrl in area.descendants():
+                        try:
+                            t = ctrl.window_text().strip()
+                        except Exception:
+                            continue
+                        if t and len(t) > 1:
+                            texts.append(t)
+                    return "\n".join(texts[-8:]) if texts else ""
+                except Exception as e:
+                    logger.error(f"fallback read error: {e}")
+                    return ""
+
+        content = await asyncio.get_event_loop().run_in_executor(None, read)
+        if content:
+            logger.info(f"[FALLBACK] read {len(content)}chars from main window for '{contact}'")
+            await self._send_user_msg(contact, content)
 
     async def _cleanup_loop(self):
         while self._running:
