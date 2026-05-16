@@ -227,18 +227,15 @@ def _click_and_read(main_window, sender: str) -> str:
             area = main_window.child_window(**Lists.FriendChatList)
             if area.exists(timeout=2):
                 dbg("chat area exists")
-                # 方式 A: Text 子控件
-                for ctrl in area.descendants(control_type="Text"):
-                    t = ctrl.window_text().strip()
+                # 遍历整个聊天区的全部 Text 控件（不限 types）
+                for ctrl in area.descendants():
+                    try:
+                        t = ctrl.window_text().strip()
+                    except Exception:
+                        continue
                     if t and len(t) > 1:
                         texts.append(t)
-                dbg(f"  Text descendants: {len(texts)}")
-                # 方式 B: 直接读区域文本
-                if not texts:
-                    raw = area.window_text()
-                    dbg(f"  area.window_text() len={len(raw)}")
-                    if raw.strip():
-                        texts = [l.strip() for l in raw.split("\n") if l.strip()]
+                dbg(f"  all descendants with text: {len(texts)}")
             else:
                 dbg("chat area NOT found")
         finally:
