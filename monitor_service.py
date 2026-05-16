@@ -65,6 +65,16 @@ class MonitorService:
         entry = self._active.get(contact)
         return entry["window"] if entry else None
 
+    async def reset_snapshot(self, contact: str):
+        """AI 回复发出后调用：刷新监听器的快照，避免把回复当新消息转发"""
+        if contact not in self._active:
+            return
+        entry = self._active[contact]
+        loop = asyncio.get_event_loop()
+        snapshot = await loop.run_in_executor(None, self._read_visible, entry["window"])
+        if contact in self._active:
+            self._active[contact]["_snapshot"] = snapshot
+
     # ============================================================
     # 扫描循环（轻量，只检测新联系人）
     # ============================================================
@@ -134,14 +144,22 @@ class MonitorService:
         }
 
     def _read_visible(self, dialog) -> str:
-        """读取独立窗口里的可见消息文本（用于首次读取触发消息）"""
+        """读取独立窗口里的可见消息文本"""
         import time as _t
-        from pyweixin.Uielements import Lists
         with wechat_lock:
             try:
-                area = dialog.child_window(**Lists.FriendChatList)
-                if not area.exists(timeout=2):
-                    return ""
+                texts = []
+                for ctrl in dialog.descendants():
+                    try:
+                        t = ctrl.window_text().strip()
+                    except Exception:
+                        continue
+                    if t and len(t) > 1:
+                        texts.append(t)
+                return "\n".join(texts[-8:]) if texts else ""
+            except Exception as e:
+                logger.warning(f"read_visible error: {e}")
+                return ""
                 texts = []
                 for ctrl in area.descendants():
                     try:
@@ -167,39 +185,39 @@ class MonitorService:
                 return None
 
     async def _listen_task(self, contact: str, dialog):
-        """持续监听独立窗口的新消息"""
-        while self._running and contact in self._active:
-            # 检测到消息则发送给 Hub
-            content = await self._listen_once(contact, dialog)
-            if content:
-                self._active[contact]["last_msg"] = time.time()
-                await self._send_user_msg(contact, content)
-            await asyncio.sleep(2)
+        """轮询独立窗口的可见文本，检测新消息"""
+        # 初始化快照
+        if contact in self._active:
+            self._active[contact]["_snapshot"] = ""
 
-    def _listen_once(self, contact: str, dialog) -> str:
-        """监听独立窗口一次，返回新消息文本（空=无新消息）"""
-        from pyweixin.WeChatAuto import Monitor
-        with wechat_lock:
-            try:
-                result = Monitor.listen_on_chat(
-                    dialog_window=dialog,
-                    duration=_LISTEN_DURATION,
-                    close_dialog_window=False,
-                )
-                texts = result.get("文本内容") or []
-                senders = result.get("消息发送人") or []
-                if not texts:
-                    return ""
-                lines = []
-                for t, s in zip(texts, senders or []):
-                    if s and s != contact:
-                        lines.append(f"{s}: {t}")
-                    else:
-                        lines.append(t)
-                return "\n".join(lines)
-            except Exception as e:
-                logger.warning(f"listen '{contact}' error: {e}")
-                return ""
+        while self._running and contact in self._active:
+            snapshot = await asyncio.get_event_loop().run_in_executor(
+                None, self._read_visible, dialog
+            )
+            entry = self._active.get(contact)
+            if not entry:
+                break
+            old = entry.get("_snapshot", "")
+            if old and snapshot and snapshot != old:
+                added = self._diff_content(old, snapshot)
+                if added:
+                    entry["last_msg"] = time.time()
+                    entry["_snapshot"] = snapshot
+                    await self._send_user_msg(contact, added)
+            else:
+                entry["_snapshot"] = snapshot or old
+            await asyncio.sleep(3)
+
+    def _diff_content(self, old: str, new: str) -> str:
+        """对比新旧快照，返回新增的文本行"""
+        old_lines = old.split("\n")
+        new_lines = new.split("\n")
+        # 新行数相同时无新消息
+        if len(new_lines) <= len(old_lines):
+            return ""
+        # 返回多出来的行
+        added = new_lines[- (len(new_lines) - len(old_lines)):]
+        return "\n".join(added)
 
     # ============================================================
     # 清理过期窗口

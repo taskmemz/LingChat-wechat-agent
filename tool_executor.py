@@ -109,6 +109,11 @@ class ToolExecutor:
             sent_count += 1
             if len(parts) > 1:
                 await asyncio.sleep(0.5)
+
+        # 通知监听器刷新快照，避免把 AI 回复当作新消息转发
+        if self.monitor and session_id:
+            await self.monitor.reset_snapshot(session_id)
+
         return {"sent": sent_count, "parts": parts}
 
     async def handle_ai_reply(self, envelope: Envelope) -> None:
