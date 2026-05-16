@@ -44,3 +44,11 @@ class Envelope:
         if self.to is not None:
             d["to"] = self.to
         return d
+
+
+def envelope_from_dict(data: dict) -> Envelope:
+    """Create Envelope from JSON dict, handling 'from' keyword conflict."""
+    kwargs = dict(data)
+    if "from" in kwargs:
+        kwargs["from_node"] = kwargs.pop("from")
+    return Envelope(**kwargs)

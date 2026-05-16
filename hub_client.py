@@ -8,7 +8,7 @@ from typing import Callable, Optional
 import websockets
 
 from config import AgentConfig
-from models import Envelope, MessageType
+from models import Envelope, MessageType, envelope_from_dict
 
 logger = logging.getLogger("wechat-agent.hub")
 
@@ -51,7 +51,7 @@ class HubClient:
                 )
                 await self._ws.send(json.dumps(reg.model_dump(by_alias=True)))
                 ack_raw = await self._ws.recv()
-                ack = Envelope(**json.loads(ack_raw))
+                ack = envelope_from_dict(json.loads(ack_raw))
                 self.assigned_id = ack.to
                 logger.info(f"Registered as {self.assigned_id}")
 
@@ -67,7 +67,7 @@ class HubClient:
             try:
                 raw = await self._ws.recv()
                 data = json.loads(raw)
-                envelope = Envelope(**data)
+                envelope = envelope_from_dict(data)
 
                 if envelope.type == MessageType.PING:
                     pong = Envelope(
