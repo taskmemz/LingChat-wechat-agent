@@ -113,11 +113,17 @@ class MonitorService:
                         search_pages=1,
                     )
                     chat_list = dialog.child_window(**Lists.FriendChatList)
-                    if not chat_list.exists(timeout=1):
+                    if not chat_list.exists(timeout=3):
+                        logger.warning(f"No chat list visible for {sender}")
                         return ""
+
                     messages = chat_list.children(control_type="CheckBox")
                     if not messages:
+                        messages = chat_list.children(control_type="ListItem")
+                    if not messages:
+                        logger.warning(f"No message controls found in chat for {sender}")
                         return ""
+
                     texts = [m.window_text() for m in messages[-5:] if m.window_text().strip()]
                     return "\n".join(texts)
                 except Exception as e:
