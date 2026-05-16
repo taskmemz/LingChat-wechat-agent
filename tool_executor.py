@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import time
 from typing import Any
 
@@ -25,20 +24,6 @@ class ToolExecutor:
     def _ensure_pyweixin(self):
         if self._pyweixin_loaded:
             return
-        import os
-
-        pywechat_path = os.environ.get(
-            "PYWECHAT_PATH",
-            os.path.join(
-                os.path.dirname(__file__),
-                "..",
-                "LingChat-wechat-accessable",
-                "pywechat-main",
-                "pywechat-main",
-            ),
-        )
-        if pywechat_path not in sys.path:
-            sys.path.insert(0, pywechat_path)
         self._pyweixin_loaded = True
 
     async def execute(self, envelope: Envelope) -> None:
@@ -158,9 +143,10 @@ class ToolExecutor:
     # ========== Tool implementations ==========
 
     def _do_send_message(self, target: str, content: str):
-        from pyweixin import Messages, Navigator
+        import pyweixin.WeChatTools as wt
+        from pyweixin.WeChatAuto import Messages
 
-        main_window = Navigator.open_dialog_window(friend=target)
+        main_window = wt.Navigator.open_dialog_window(friend=target)
         Messages.send_messages_to_friend(
             main_window=main_window, messages=[content], send_delay=0.3
         )
@@ -184,7 +170,7 @@ class ToolExecutor:
         return {"sent": len(messages)}
 
     def _tool_send_files(self, args: dict) -> dict:
-        from pyweixin import Files
+        from pyweixin.WeChatAuto import Files
 
         Files.send_files_to_friend(
             friend=args["target"], files=args["files"], send_delay=0.3
@@ -192,32 +178,32 @@ class ToolExecutor:
         return {"status": "sent"}
 
     def _tool_get_my_info(self, args: dict) -> dict:
-        from pyweixin import Contacts
+        from pyweixin.WeChatAuto import Contacts
 
         return Contacts.check_my_info()
 
     def _tool_get_friends(self, args: dict) -> list:
-        from pyweixin import Contacts
+        from pyweixin.WeChatAuto import Contacts
 
         return Contacts.get_friends_detail()
 
     def _tool_get_friend_profile(self, args: dict) -> dict:
-        from pyweixin import Contacts
+        from pyweixin.WeChatAuto import Contacts
 
         return Contacts.get_friend_profile(friend=args["friend"])
 
     def _tool_get_groups(self, args: dict) -> list:
-        from pyweixin import Contacts
+        from pyweixin.WeChatAuto import Contacts
 
         return Contacts.get_groups_info()
 
     def _tool_get_group_members(self, args: dict) -> list:
-        from pyweixin import Contacts
+        from pyweixin.WeChatAuto import Contacts
 
         return Contacts.get_groupMembers_info(group=args["group"])
 
     def _tool_get_chat_history(self, args: dict) -> list:
-        from pyweixin import Messages
+        from pyweixin.WeChatAuto import Messages
 
         result = Messages.dump_chat_history(
             friend=args["friend"], number=args["number"]
@@ -225,7 +211,7 @@ class ToolExecutor:
         return result
 
     def _tool_post_moments(self, args: dict) -> dict:
-        from pyweixin import Moments
+        from pyweixin.WeChatAuto import Moments
 
         Moments.post_moments(
             text=args.get("text", ""), medias=args.get("medias", [])
@@ -233,12 +219,12 @@ class ToolExecutor:
         return {"status": "posted"}
 
     def _tool_get_moments(self, args: dict) -> list:
-        from pyweixin import Moments
+        from pyweixin.WeChatAuto import Moments
 
         return Moments.dump_recent_posts(recent=args.get("recent", "Today"))
 
     def _tool_change_remark(self, args: dict) -> dict:
-        from pyweixin import FriendSettings
+        from pyweixin.WeChatAuto import FriendSettings
 
         FriendSettings.change_remark(
             friend=args["friend"],
@@ -249,7 +235,7 @@ class ToolExecutor:
         return {"status": "changed"}
 
     def _tool_add_friend(self, args: dict) -> dict:
-        from pyweixin import FriendSettings
+        from pyweixin.WeChatAuto import FriendSettings
 
         FriendSettings.add_new_friend(
             number=args["number"],
@@ -259,7 +245,7 @@ class ToolExecutor:
         return {"status": "request_sent"}
 
     def _tool_delete_friend(self, args: dict) -> dict:
-        from pyweixin import FriendSettings
+        from pyweixin.WeChatAuto import FriendSettings
 
         FriendSettings.delete_friend(
             friend=args["friend"],

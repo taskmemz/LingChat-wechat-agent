@@ -35,23 +35,7 @@ class MonitorService:
 
     async def _check_new_messages(self):
         def scan():
-            import sys
-            import os
-
-            pywechat_path = os.environ.get(
-                "PYWECHAT_PATH",
-                os.path.join(
-                    os.path.dirname(__file__),
-                    "..",
-                    "LingChat-wechat-accessable",
-                    "pywechat-main",
-                    "pywechat-main",
-                ),
-            )
-            if pywechat_path not in sys.path:
-                sys.path.insert(0, pywechat_path)
-
-            from pyweixin import Monitor, Navigator, Contacts, scan_for_new_messages
+            from pyweixin import scan_for_new_messages
 
             try:
                 result = scan_for_new_messages(close_weixin=False)
@@ -84,23 +68,8 @@ class MonitorService:
 
     async def _read_messages(self, sender: str) -> str:
         def read():
-            import sys
-            import os
-
-            pywechat_path = os.environ.get(
-                "PYWECHAT_PATH",
-                os.path.join(
-                    os.path.dirname(__file__),
-                    "..",
-                    "LingChat-wechat-accessable",
-                    "pywechat-main",
-                    "pywechat-main",
-                ),
-            )
-            if pywechat_path not in sys.path:
-                sys.path.insert(0, pywechat_path)
-
-            from pyweixin import Monitor, Navigator
+            from pyweixin.WeChatTools import Navigator
+            from pyweixin.WeChatAuto import Monitor
 
             try:
                 dialog = Navigator.open_seperate_dialog_window(
