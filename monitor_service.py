@@ -111,7 +111,6 @@ class MonitorService:
                     dialog = wt.Navigator.open_dialog_window(
                         friend=sender,
                         search_pages=1,
-                        close_weixin=False,
                     )
                     chat_list = dialog.child_window(**Lists.FriendChatList)
                     if not chat_list.exists(timeout=1):
