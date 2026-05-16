@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from pyweixin.Config import GlobalConfig
 GlobalConfig.close_weixin = False
 GlobalConfig.load_delay = 1.0       # 默认 3.5s，降到 1s 加速
-GlobalConfig.search_pages = 3       # 默认 5 页，降到 3 页加速查找好友
+GlobalConfig.search_pages = 15      # 默认 5 页，加大避免掉到 emoji 搜索路径
 
 from config import AgentConfig, CONFIG_FILE
 from hub_client import HubClient
