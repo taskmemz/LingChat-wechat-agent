@@ -25,6 +25,9 @@ class ToolExecutor:
     def _ensure_pyweixin(self):
         if self._pyweixin_loaded:
             return
+        # 关键：禁止 pyweixin 执行完自动关闭微信
+        from pyweixin.Config import GlobalConfig
+        GlobalConfig.close_weixin = False
         self._pyweixin_loaded = True
 
     async def execute(self, envelope: Envelope) -> None:

@@ -6,6 +6,12 @@ import sys
 import os
 import uuid
 
+# 最先设置：禁止所有 pyweixin 函数执行后关闭微信
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+from pyweixin.Config import GlobalConfig
+GlobalConfig.close_weixin = False
+
 from config import AgentConfig, CONFIG_FILE
 from hub_client import HubClient
 from authorizer import Authorizer
