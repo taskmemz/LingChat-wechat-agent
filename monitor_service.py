@@ -141,13 +141,16 @@ class MonitorService:
 
 def _click_and_read(main_window, sender: str) -> str:
     """找 → 点 → 读，每个 pywinauto 操作单独 lock"""
-    import time as _time
+    import time as _t
     from pyweixin.Uielements import Lists, SideBar, Main_window, Texts
 
-    # ── 1. 聚焦 ──
+    def dbg(msg):
+        print(f"[DBG] read: {msg}", flush=True)
+
+    dbg("step1 set_focus")
     _safe_call(main_window.set_focus)
 
-    # ── 2. 切到会话列表 ──
+    dbg("step2 sidebar")
     if _lock():
         try:
             btn = main_window.child_window(**SideBar.Weixin)
@@ -158,7 +161,7 @@ def _click_and_read(main_window, sender: str) -> str:
         finally:
             _unlock()
 
-    # ── 3. 读会话列表 ──
+    dbg("step3 session_list")
     session_list = None
     if _lock():
         try:
@@ -167,43 +170,43 @@ def _click_and_read(main_window, sender: str) -> str:
                 session_list = sl
         finally:
             _unlock()
-
     if session_list is None:
-        logger.warning("Session list not found")
+        dbg("FAIL: session_list not found")
         return ""
 
-    # ── 4. 找联系人 ──
+    dbg("step4 find sender")
     target_item = None
     if _lock():
         try:
             items = session_list.children(control_type="ListItem")
-            for item in items or []:
+            dbg(f"  session items: {len(items) if items else 0}")
+            for idx, item in enumerate(items or []):
                 try:
                     aid = item.automation_id().replace("session_item_", "")
                     if aid == sender:
                         target_item = item
+                        dbg(f"  found '{sender}' at index {idx}")
                         break
                 except Exception:
                     continue
         finally:
             _unlock()
-
     if target_item is None:
-        logger.warning(f"'{sender}' not in visible session list")
+        dbg(f"FAIL: '{sender}' not found")
         return ""
 
-    # ── 5. 点击打开聊天 ──
+    dbg("step5 click sender")
     if _lock():
         try:
             target_item.click_input()
         except Exception as e:
-            logger.warning(f"Click '{sender}' failed: {e}")
+            dbg(f"FAIL click: {e}")
             return ""
         finally:
             _unlock()
 
-    # ── 6. 等聊天加载 ──
-    _time.sleep(0.5)
+    dbg("step6 wait for chat")
+    _t.sleep(0.5)
     name_label = dict(Texts.CurrentChatNameText)
     name_label["title"] = sender
     chat_ok = False
@@ -213,27 +216,37 @@ def _click_and_read(main_window, sender: str) -> str:
         finally:
             _unlock()
     if not chat_ok:
-        logger.warning(f"Chat '{sender}' didn't open")
+        dbg(f"FAIL: chat '{sender}' didn't open")
         return ""
+    dbg("chat opened OK")
 
-    # ── 7. 读消息气泡 ──
-    bubbles = None
+    dbg("step7 read texts")
+    texts = []
     if _lock():
         try:
             area = main_window.child_window(**Lists.FriendChatList)
             if area.exists(timeout=2):
-                b = area.children(control_type="CheckBox")
-                if not b:
-                    b = area.children(control_type="ListItem")
-                bubbles = b
+                dbg("chat area exists")
+                # 方式 A: Text 子控件
+                for ctrl in area.descendants(control_type="Text"):
+                    t = ctrl.window_text().strip()
+                    if t and len(t) > 1:
+                        texts.append(t)
+                dbg(f"  Text descendants: {len(texts)}")
+                # 方式 B: 直接读区域文本
+                if not texts:
+                    raw = area.window_text()
+                    dbg(f"  area.window_text() len={len(raw)}")
+                    if raw.strip():
+                        texts = [l.strip() for l in raw.split("\n") if l.strip()]
+            else:
+                dbg("chat area NOT found")
         finally:
             _unlock()
 
-    if not bubbles:
-        logger.warning(f"No messages visible for '{sender}'")
+    if not texts:
+        dbg("FAIL: no text from chat area")
         return ""
 
-    texts = [b.window_text() for b in bubbles[-5:] if b.window_text().strip()]
-    if not texts:
-        return ""
-    return "\n".join(texts)
+    dbg(f"OK: {len(texts)} lines, last: {texts[-1][:50]}")
+    return "\n".join(texts[-5:])
