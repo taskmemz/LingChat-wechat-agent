@@ -26,6 +26,18 @@ from dataclasses import dataclass, field
 from typing import Set
 
 POLL_INTERVAL = 5  # 轮询间隔（秒）
+LOG_FILE = "watchdog_daemon.log"
+
+
+def log(msg: str):
+    """同时打印到终端和日志文件"""
+    line = f"[{time.strftime('%H:%M:%S')}] {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 @dataclass
@@ -43,16 +55,18 @@ class WatchdogDaemon:
         self._self_pid = os.getpid()
 
     def run(self):
-        print(f"[wd] 看门狗启动  timeout={self.timeout}s  exclude={self.exclude}")
-        print(f"[wd] 自身 PID={self._self_pid}  轮询间隔={POLL_INTERVAL}s")
-        print(f"[wd] 按 Ctrl+C 停止\n")
+        log(f"看门狗启动  timeout={self.timeout}s  自身 PID={self._self_pid}")
+        log(f"日志文件: {os.path.abspath(LOG_FILE)}")
+        log(f"按 Ctrl+C 停止")
 
         try:
             while True:
                 self._check()
                 time.sleep(POLL_INTERVAL)
         except KeyboardInterrupt:
-            print("\n[wd] 停止")
+            log("看门狗停止")
+        except Exception as e:
+            log(f"看门狗异常退出: {e}")
 
     def _check(self):
         now = time.time()
@@ -146,7 +160,7 @@ class WatchdogDaemon:
 
     def _kill_pid(self, pid: int, elapsed: float):
         """强制终止进程"""
-        print(f"[wd] KILL PID={pid}  (运行 {elapsed:.0f}s, 超时 {self.timeout}s)")
+        log(f"KILL PID={pid}  (运行 {elapsed:.0f}s, 超时 {self.timeout}s)")
         try:
             if platform.system() == "Windows":
                 subprocess.run(
@@ -156,7 +170,7 @@ class WatchdogDaemon:
             else:
                 os.kill(pid, signal.SIGKILL)
         except Exception as e:
-            print(f"[wd] 杀 {pid} 失败: {e}")
+            log(f"杀 {pid} 失败: {e}")
 
 
 def main():
