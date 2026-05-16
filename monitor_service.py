@@ -75,32 +75,21 @@ class MonitorService:
 
     async def _read_messages(self, sender: str) -> str:
         def read():
-            from pyweixin.WeChatTools import Navigator
-            from pyweixin.WeChatAuto import Monitor
+            from pyweixin.WeChatAuto import Messages
 
             try:
-                dialog = Navigator.open_seperate_dialog_window(
-                    friend=sender, window_minimize=True, close_weixin=False
+                result = Messages.dump_chat_history(
+                    friend=sender, number=3, close_weixin=False
                 )
-                result = Monitor.listen_on_chat(
-                    dialog_window=dialog,
-                    duration=self.config.listen_duration,
-                    close_dialog_window=True,
-                )
-                texts = result.get("文本内容") or []
-                senders = result.get("消息发送人") or []
-                if not texts:
+                if isinstance(result, tuple):
+                    contents, *_ = result
+                elif isinstance(result, list):
+                    contents = result
+                else:
                     return ""
-                combined = []
-                for t, s in zip(texts, senders or []):
-                    if s and s != sender:
-                        combined.append(f"{s}: {t}")
-                    else:
-                        combined.append(t)
-                return "\n".join(combined)
-            except IndexError:
-                logger.warning(f"No messages in window for {sender}")
-                return ""
+                if not contents:
+                    return ""
+                return "\n".join(contents[-3:])
             except Exception as e:
                 logger.error(f"Read messages from {sender} failed: {e}")
                 return ""
