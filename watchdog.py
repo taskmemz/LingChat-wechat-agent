@@ -17,16 +17,44 @@ import platform
 DEFAULT_TIMEOUT = 60  # seconds
 
 
-def kill_process(proc, kill_all=False):
+def kill_process(proc, kill_all=False, self_pid=None):
     """Kill the process (and optionally all python processes)."""
     if kill_all:
+        killed = 0
         if platform.system() == "Windows":
-            subprocess.run(["taskkill", "/F", "/IM", "python.exe"], capture_output=True)
-            subprocess.run(["taskkill", "/F", "/IM", "python3.exe"], capture_output=True)
+            result = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/FI", "IMAGENAME eq python.exe"],
+                capture_output=True, text=True
+            )
+            for line in result.stdout.split("\n")[1:]:
+                if '"python.exe"' not in line:
+                    continue
+                parts = line.split(",")
+                if len(parts) >= 2:
+                    pid_str = parts[1].strip('"')
+                    try:
+                        pid = int(pid_str)
+                        if pid == self_pid:
+                            continue
+                        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+                        killed += 1
+                    except ValueError:
+                        pass
         else:
-            subprocess.run(["pkill", "-9", "python"], capture_output=True)
-            subprocess.run(["pkill", "-9", "python3"], capture_output=True)
-        print("[watchdog] Killed ALL python processes")
+            import signal
+            try:
+                result = subprocess.run(["pgrep", "-f", "python"], capture_output=True, text=True)
+                for line in result.stdout.strip().split("\n"):
+                    if not line:
+                        continue
+                    pid = int(line.strip())
+                    if pid == self_pid:
+                        continue
+                    os.kill(pid, signal.SIGKILL)
+                    killed += 1
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+        print(f"[watchdog] Killed {killed} other python processes")
         return
 
     # Graceful first, then force
@@ -50,6 +78,8 @@ def main():
     timeout = DEFAULT_TIMEOUT
     kill_all = False
 
+    # 先提取 --timeout / --kill-all 参数，剩余的全拼接为命令
+    cmd_parts = []
     i = 0
     while i < len(args):
         if args[i] == "--timeout" and i + 1 < len(args):
@@ -59,8 +89,10 @@ def main():
             kill_all = True
             i += 1
         else:
-            cmd = " ".join(args)
-            break
+            cmd_parts.append(args[i])
+            i += 1
+    if cmd_parts:
+        cmd = " ".join(cmd_parts)
 
     start = time.time()
     print(f"[watchdog] RUNNING: {cmd}")
@@ -72,7 +104,7 @@ def main():
         elapsed = time.time() - start
         if timeout > 0 and elapsed >= timeout:
             print(f"[watchdog] TIMEOUT after {int(elapsed)}s")
-            kill_process(proc, kill_all=kill_all)
+            kill_process(proc, kill_all=kill_all, self_pid=os.getpid())
             sys.exit(1)
 
         ret = proc.poll()
