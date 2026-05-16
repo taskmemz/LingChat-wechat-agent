@@ -128,9 +128,8 @@ class MonitorService:
             return
 
         # 先读一次当前可见的消息（触发了扫描的那条）
-        # 先等独立窗口渲染完毕
-        import time as _t
-        _t.sleep(1.5)
+        # 等独立窗口渲染完毕（用 asyncio.sleep 不阻塞事件循环）
+        await asyncio.sleep(2)
 
         content = await asyncio.get_event_loop().run_in_executor(
             None, self._read_visible, dialog
@@ -149,28 +148,21 @@ class MonitorService:
         }
 
     def _read_visible(self, dialog) -> str:
-        """读取独立窗口里可见的消息文本（只查 CheckBox 和 Text 控件，快）"""
-        import time as _t
+        """读取独立窗口里可见的消息文本（直取 List 的 CheckBox 孩子）"""
         with wechat_lock:
             try:
+                # ChatSingleWindow 内只有一个 List（聊天消息列表）
+                chat_list = dialog.child_window(control_type="List", found_index=0)
+                if not chat_list.exists(timeout=0.5):
+                    return ""
                 texts = []
-                # 优先查 CheckBox（pyweixin 用这个检测消息气泡）
-                for cb in dialog.descendants(control_type="CheckBox"):
+                for cb in chat_list.children(control_type="CheckBox"):
                     try:
                         t = cb.window_text().strip()
                     except Exception:
                         continue
                     if t and len(t) > 1:
                         texts.append(t)
-                # 回退到 Text 控件
-                if not texts:
-                    for tx in dialog.descendants(control_type="Text"):
-                        try:
-                            t = tx.window_text().strip()
-                        except Exception:
-                            continue
-                        if t and len(t) > 1:
-                            texts.append(t)
                 return "\n".join(texts[-8:]) if texts else ""
             except Exception as e:
                 logger.warning(f"read_visible error: {e}")
