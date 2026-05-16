@@ -97,27 +97,37 @@ class MonitorService:
 
     async def _read_messages(self, sender: str) -> str:
         def read():
-            from pyweixin.WeChatAuto import Messages
+            from pyweixin.WeChatTools import Navigator
+            from pyweixin.Uielements import Lists
 
             with wechat_lock:
+                dialog = None
                 try:
-                    result = Messages.dump_chat_history(
+                    dialog = Navigator.open_seperate_dialog_window(
                         friend=sender,
-                        number=3,
                         close_weixin=False,
                     )
-                    if isinstance(result, tuple):
-                        contents, *_ = result
-                    elif isinstance(result, list):
-                        contents = result
-                    else:
+                    chat_list = dialog.child_window(**Lists.FriendChatList)
+                    if not chat_list.exists(timeout=2):
                         return ""
-                    if not contents:
+                    messages = chat_list.children(control_type="CheckBox")
+                    if not messages:
                         return ""
-                    return "\n".join(contents[-3:])
+                    texts = [
+                        m.window_text()
+                        for m in messages[-5:]
+                        if m.window_text().strip()
+                    ]
+                    return "\n".join(texts)
                 except Exception as e:
                     logger.error(f"Read messages from {sender} failed: {e}")
                     return ""
+                finally:
+                    try:
+                        if dialog is not None:
+                            dialog.close()
+                    except Exception:
+                        pass
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, read)
