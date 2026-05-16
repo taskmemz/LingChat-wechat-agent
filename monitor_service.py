@@ -128,12 +128,17 @@ class MonitorService:
             return
 
         # 先读一次当前可见的消息（触发了扫描的那条）
+        # 先等独立窗口渲染完毕
+        import time as _t
+        _t.sleep(1.5)
+
         content = await asyncio.get_event_loop().run_in_executor(
             None, self._read_visible, dialog
         )
+        logger.info(f"[LISTENER] first read for '{contact}': {len(content or '')}chars")
         if content:
             now = time.time()
-            self._active[contact] = {"window": dialog, "task": None, "last_msg": now}
+            self._active[contact] = {"window": dialog, "task": None, "last_msg": now, "_snapshot": content}
             await self._send_user_msg(contact, content)
 
         task = asyncio.create_task(self._listen_task(contact, dialog))
@@ -144,18 +149,28 @@ class MonitorService:
         }
 
     def _read_visible(self, dialog) -> str:
-        """读取独立窗口里的可见消息文本"""
+        """读取独立窗口里可见的消息文本（只查 CheckBox 和 Text 控件，快）"""
         import time as _t
         with wechat_lock:
             try:
                 texts = []
-                for ctrl in dialog.descendants():
+                # 优先查 CheckBox（pyweixin 用这个检测消息气泡）
+                for cb in dialog.descendants(control_type="CheckBox"):
                     try:
-                        t = ctrl.window_text().strip()
+                        t = cb.window_text().strip()
                     except Exception:
                         continue
                     if t and len(t) > 1:
                         texts.append(t)
+                # 回退到 Text 控件
+                if not texts:
+                    for tx in dialog.descendants(control_type="Text"):
+                        try:
+                            t = tx.window_text().strip()
+                        except Exception:
+                            continue
+                        if t and len(t) > 1:
+                            texts.append(t)
                 return "\n".join(texts[-8:]) if texts else ""
             except Exception as e:
                 logger.warning(f"read_visible error: {e}")
