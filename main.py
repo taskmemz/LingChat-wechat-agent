@@ -105,6 +105,7 @@ async def main():
     monitor = MonitorService(config, hub)
 
     async def on_message(envelope: Envelope):
+        logger.info(f"Hub msg: type={envelope.type} payload_keys={list(envelope.payload.keys())}")
         if envelope.type == MessageType.TOOL_CALL:
             await executor.execute(envelope)
         elif envelope.type == MessageType.AI_REPLY:
