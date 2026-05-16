@@ -3,14 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 
 from config import AgentConfig
 from hub_client import HubClient
 from models import Envelope, MessageType
+from wechat_lock import wechat_lock
 
 logger = logging.getLogger("wechat-agent.monitor")
 
-# 微信断线后的退避策略：错误次数越多，轮询间隔越大
 _BACKOFF_SCHEDULE = [2, 5, 15, 30, 60]
 
 
@@ -20,11 +21,29 @@ class MonitorService:
         self.hub = hub
         self._running = False
         self._consecutive_errors = 0
+        self._main_window: Any = None
 
     async def start(self):
         self._running = True
-        logger.info("Monitor service started")
+        # 启动时一次性获取微信主窗口
+        loop = asyncio.get_event_loop()
+        self._main_window = await loop.run_in_executor(None, self._init_weixin)
+        logger.info(
+            f"WeChat window initialized: {self._main_window is not None}"
+        )
         asyncio.create_task(self._monitor_loop())
+        logger.info("Monitor service started")
+
+    def _init_weixin(self):
+        with wechat_lock:
+            from pyweixin.WeChatTools import Navigator
+
+            try:
+                main = Navigator.open_weixin(is_maximize=False)
+                return main
+            except Exception as e:
+                logger.error(f"Failed to open WeChat: {e}")
+                return None
 
     async def stop(self):
         self._running = False
@@ -32,27 +51,30 @@ class MonitorService:
     async def _monitor_loop(self):
         while self._running:
             try:
-                await self._check_new_messages()
-                # 成功扫描一次 → 重置错误计数
-                self._consecutive_errors = 0
+                if self._main_window is None:
+                    logger.warning("WeChat not initialized, skipping scan")
+                else:
+                    await self._check_new_messages()
+                    self._consecutive_errors = 0
             except Exception as e:
                 self._consecutive_errors += 1
                 logger.error(f"Monitor error ({self._consecutive_errors}x): {e}")
 
-            # 根据错误次数决定等待间隔
             idx = min(self._consecutive_errors, len(_BACKOFF_SCHEDULE) - 1)
-            sleep_time = _BACKOFF_SCHEDULE[idx]
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(_BACKOFF_SCHEDULE[idx])
 
     async def _check_new_messages(self):
-        def scan():
+        def scan(w):
             from pyweixin.utils import scan_for_new_messages
 
-            result = scan_for_new_messages(close_weixin=False)
-            return result
+            with wechat_lock:
+                result = scan_for_new_messages(
+                    main_window=w, close_weixin=False
+                )
+                return result
 
         loop = asyncio.get_event_loop()
-        new_messages = await loop.run_in_executor(None, scan)
+        new_messages = await loop.run_in_executor(None, scan, self._main_window)
 
         if new_messages:
             logger.info(f"New messages from: {list(new_messages.keys())}")
@@ -77,22 +99,25 @@ class MonitorService:
         def read():
             from pyweixin.WeChatAuto import Messages
 
-            try:
-                result = Messages.dump_chat_history(
-                    friend=sender, number=3, close_weixin=False
-                )
-                if isinstance(result, tuple):
-                    contents, *_ = result
-                elif isinstance(result, list):
-                    contents = result
-                else:
+            with wechat_lock:
+                try:
+                    result = Messages.dump_chat_history(
+                        friend=sender,
+                        number=3,
+                        close_weixin=False,
+                    )
+                    if isinstance(result, tuple):
+                        contents, *_ = result
+                    elif isinstance(result, list):
+                        contents = result
+                    else:
+                        return ""
+                    if not contents:
+                        return ""
+                    return "\n".join(contents[-3:])
+                except Exception as e:
+                    logger.error(f"Read messages from {sender} failed: {e}")
                     return ""
-                if not contents:
-                    return ""
-                return "\n".join(contents[-3:])
-            except Exception as e:
-                logger.error(f"Read messages from {sender} failed: {e}")
-                return ""
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, read)

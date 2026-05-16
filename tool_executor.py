@@ -9,6 +9,7 @@ from authorizer import Authorizer, AuthorizationResult
 from hub_client import HubClient
 from message_splitter import split_message
 from models import Envelope, MessageType
+from wechat_lock import wechat_lock
 
 logger = logging.getLogger("wechat-agent.executor")
 
@@ -90,7 +91,12 @@ class ToolExecutor:
         parts = split_message(content)
         sent_count = 0
         for part in parts:
-            await self._run_sync(self._do_send_message, target, part)
+
+            def send(target=target, part=part):
+                with wechat_lock:
+                    self._do_send_message(target, part)
+
+            await self._run_sync(send)
             sent_count += 1
             if len(parts) > 1:
                 await asyncio.sleep(0.5)
@@ -133,7 +139,11 @@ class ToolExecutor:
         if not handler:
             raise ValueError(f"Unknown tool: {tool_name}")
 
-        return await self._run_sync(handler, args)
+        def wrapped(args):
+            with wechat_lock:
+                return handler(args)
+
+        return await self._run_sync(wrapped, args)
 
     async def _run_sync(self, func, *args, **kwargs):
         if self._loop is None:
