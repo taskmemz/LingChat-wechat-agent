@@ -166,22 +166,21 @@ class ToolExecutor:
     # ========== Tool implementations ==========
 
     def _do_send_message(self, target: str, content: str):
-        import pyweixin.WeChatTools as wt
-        from pyweixin.WeChatAuto import Messages
+        from pyweixin.utils import send_messages_to_friend
 
-        # 如果已有活跃监听窗口，直接复用
+        # 优先复用监听器的独立窗口
         dialog = None
         close_after = False
         if self.monitor:
             dialog = self.monitor.get_window(target)
         if dialog is None:
-            print(f"[SEND] opening separate dialog for '{target[:20]}'...", flush=True)
-            dialog = wt.Navigator.open_seperate_dialog_window(
+            from pyweixin.WeChatTools import Navigator
+            dialog = Navigator.open_seperate_dialog_window(
                 friend=target, close_weixin=False,
             )
             close_after = True
 
-        Messages.send_messages_to_friend(
+        send_messages_to_friend(
             main_window=dialog,
             messages=[content],
             send_delay=0.3,
@@ -192,9 +191,6 @@ class ToolExecutor:
                 dialog.close()
             except Exception:
                 pass
-            print(f"[SEND] done (temp window closed)", flush=True)
-        else:
-            print(f"[SEND] done (used existing listener window)", flush=True)
         return True
 
     def _tool_send_message(self, args: dict) -> dict:
