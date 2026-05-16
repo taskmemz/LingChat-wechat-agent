@@ -101,31 +101,30 @@ class MonitorService:
             from pyweixin.Uielements import Lists
 
             with wechat_lock:
-                dialog = None
+                win = None
                 try:
-                    dialog = Navigator.open_seperate_dialog_window(
-                        friend=sender,
-                        close_weixin=False,
+                    win, _is_group = Navigator.open_chat_history(
+                        friend=sender, close_weixin=False
                     )
-                    chat_list = dialog.child_window(**Lists.FriendChatList)
-                    if not chat_list.exists(timeout=2):
+                    hist_list = win.child_window(**Lists.ChatHistoryList)
+                    if not hist_list.exists(timeout=3):
+                        logger.warning(f"No chat history list for {sender}")
                         return ""
-                    messages = chat_list.children(control_type="CheckBox")
-                    if not messages:
+
+                    items = hist_list.children(control_type="ListItem")
+                    if not items:
+                        logger.warning(f"No messages in history for {sender}")
                         return ""
-                    texts = [
-                        m.window_text()
-                        for m in messages[-5:]
-                        if m.window_text().strip()
-                    ]
+
+                    texts = [i.window_text() for i in items[-5:] if i.window_text().strip()]
                     return "\n".join(texts)
                 except Exception as e:
                     logger.error(f"Read messages from {sender} failed: {e}")
                     return ""
                 finally:
                     try:
-                        if dialog is not None:
-                            dialog.close()
+                        if win is not None:
+                            win.close()
                     except Exception:
                         pass
 
