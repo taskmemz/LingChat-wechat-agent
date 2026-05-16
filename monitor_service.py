@@ -80,15 +80,20 @@ class MonitorService:
                     duration=self.config.listen_duration,
                     close_dialog_window=True,
                 )
-                texts = result.get("文本内容", [])
-                senders = result.get("消息发送人", [])
+                texts = result.get("文本内容") or []
+                senders = result.get("消息发送人") or []
+                if not texts:
+                    return ""
                 combined = []
-                for t, s in zip(texts, senders):
+                for t, s in zip(texts, senders or []):
                     if s and s != sender:
                         combined.append(f"{s}: {t}")
                     else:
                         combined.append(t)
-                return "\n".join(combined) if combined else ""
+                return "\n".join(combined)
+            except IndexError:
+                logger.warning(f"No messages in window for {sender}")
+                return ""
             except Exception as e:
                 logger.error(f"Read messages from {sender} failed: {e}")
                 return ""

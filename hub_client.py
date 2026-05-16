@@ -55,7 +55,16 @@ class HubClient:
                 self.assigned_id = ack.to
                 logger.info(f"Registered as {self.assigned_id}")
 
+                # 启动周期性心跳任务
+                heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
                 await self._listen_loop()
+
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
 
             except (websockets.WebSocketException, asyncio.TimeoutError, OSError) as e:
                 logger.warning(f"Connection error: {e}")
@@ -93,6 +102,18 @@ class HubClient:
         self._connected = False
         if not self._stop:
             await self._reconnect()
+
+    async def _heartbeat_loop(self):
+        while not self._stop:
+            await asyncio.sleep(5)
+            try:
+                ping = Envelope(
+                    type=MessageType.PING,
+                    from_node=self.assigned_id or self.node_id,
+                )
+                await self._ws.send(json.dumps(ping.model_dump(by_alias=True)))
+            except Exception:
+                break
 
     async def _reconnect(self):
         delay = self.config.reconnect_delay
