@@ -673,8 +673,7 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
     '''
     def traverse_messsage_list(listItems):
         #newMessageTips为newMessagefriends中每个元素的文本:['测试365 5条新消息','一家人已置顶20条新消息']这样的字符串列表
-        listItems=[listItem for listItem in listItems if listItem.automation_id() not in not_care 
-        and mute_notifications not in listItem.window_text()]
+        listItems=[listItem for listItem in listItems if listItem.automation_id() not in not_care]
         listItems=[listItem for listItem in listItems if new_message_pattern.search(listItem.window_text())]
         senders=[listItem.automation_id().replace('session_item_','') for listItem in listItems]
         newMessageTips=[listItem.window_text() for listItem in listItems if listItem.window_text() not in newMessageSenders]
