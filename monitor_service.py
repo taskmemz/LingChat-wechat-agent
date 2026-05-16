@@ -10,12 +10,16 @@ from models import Envelope, MessageType
 
 logger = logging.getLogger("wechat-agent.monitor")
 
+# 微信断线后的退避策略：错误次数越多，轮询间隔越大
+_BACKOFF_SCHEDULE = [2, 5, 15, 30, 60]
+
 
 class MonitorService:
     def __init__(self, config: AgentConfig, hub: HubClient):
         self.config = config
         self.hub = hub
         self._running = False
+        self._consecutive_errors = 0
 
     async def start(self):
         self._running = True
@@ -29,20 +33,23 @@ class MonitorService:
         while self._running:
             try:
                 await self._check_new_messages()
+                # 成功扫描一次 → 重置错误计数
+                self._consecutive_errors = 0
             except Exception as e:
-                logger.error(f"Monitor error: {e}", exc_info=True)
-            await asyncio.sleep(self.config.monitor_interval)
+                self._consecutive_errors += 1
+                logger.error(f"Monitor error ({self._consecutive_errors}x): {e}")
+
+            # 根据错误次数决定等待间隔
+            idx = min(self._consecutive_errors, len(_BACKOFF_SCHEDULE) - 1)
+            sleep_time = _BACKOFF_SCHEDULE[idx]
+            await asyncio.sleep(sleep_time)
 
     async def _check_new_messages(self):
         def scan():
             from pyweixin.utils import scan_for_new_messages
 
-            try:
-                result = scan_for_new_messages(close_weixin=False)
-                return result
-            except Exception as e:
-                logger.error(f"Scan failed: {e}")
-                return {}
+            result = scan_for_new_messages(close_weixin=False)
+            return result
 
         loop = asyncio.get_event_loop()
         new_messages = await loop.run_in_executor(None, scan)
