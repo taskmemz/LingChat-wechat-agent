@@ -5,9 +5,9 @@ import logging
 import sys
 import os
 import uuid
+import subprocess
 
 # 最先设置：pyweixin 全局配置
-import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from pyweixin.Config import GlobalConfig
 GlobalConfig.close_weixin = False
@@ -28,12 +28,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wechat-agent")
 
+# ====== 版本标记 ======
+try:
+    _commit = subprocess.run(
+        ["git", "log", "-1", "--format=%h %s"],
+        capture_output=True, text=True, timeout=3,
+        cwd=os.path.dirname(__file__),
+    ).stdout.strip()
+except Exception:
+    _commit = "unknown"
+
+# =====================
+
 
 def print_banner():
     print(
-        r"""
+        rf"""
   ╔══════════════════════════════════════╗
   ║     LingChat WeChat Agent v0.1       ║
+  ║     commit: {_commit[:40]}  ║
   ╚══════════════════════════════════════╝
     """
     )
