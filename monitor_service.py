@@ -35,7 +35,7 @@ class MonitorService:
 
     async def _check_new_messages(self):
         def scan():
-            from pyweixin import scan_for_new_messages
+            from pyweixin.utils import scan_for_new_messages
 
             try:
                 result = scan_for_new_messages(close_weixin=False)
