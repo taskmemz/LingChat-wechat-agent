@@ -97,36 +97,28 @@ class MonitorService:
 
     async def _read_messages(self, sender: str) -> str:
         def read():
-            from pyweixin.WeChatTools import Navigator
+            import pyweixin.WeChatTools as wt
             from pyweixin.Uielements import Lists
 
             with wechat_lock:
-                win = None
+                dialog = None
                 try:
-                    win, _is_group = Navigator.open_chat_history(
-                        friend=sender, close_weixin=False
+                    dialog = wt.Navigator.open_dialog_window(
+                        friend=sender,
+                        search_pages=1,
+                        close_weixin=False,
                     )
-                    hist_list = win.child_window(**Lists.ChatHistoryList)
-                    if not hist_list.exists(timeout=3):
-                        logger.warning(f"No chat history list for {sender}")
+                    chat_list = dialog.child_window(**Lists.FriendChatList)
+                    if not chat_list.exists(timeout=1):
                         return ""
-
-                    items = hist_list.children(control_type="ListItem")
-                    if not items:
-                        logger.warning(f"No messages in history for {sender}")
+                    messages = chat_list.children(control_type="CheckBox")
+                    if not messages:
                         return ""
-
-                    texts = [i.window_text() for i in items[-5:] if i.window_text().strip()]
+                    texts = [m.window_text() for m in messages[-5:] if m.window_text().strip()]
                     return "\n".join(texts)
                 except Exception as e:
                     logger.error(f"Read messages from {sender} failed: {e}")
                     return ""
-                finally:
-                    try:
-                        if win is not None:
-                            win.close()
-                    except Exception:
-                        pass
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, read)
