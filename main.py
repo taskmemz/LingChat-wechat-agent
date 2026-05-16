@@ -6,11 +6,13 @@ import sys
 import os
 import uuid
 
-# 最先设置：禁止所有 pyweixin 函数执行后关闭微信
+# 最先设置：pyweixin 全局配置
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from pyweixin.Config import GlobalConfig
 GlobalConfig.close_weixin = False
+GlobalConfig.load_delay = 1.0       # 默认 3.5s，降到 1s 加速
+GlobalConfig.search_pages = 3       # 默认 5 页，降到 3 页加速查找好友
 
 from config import AgentConfig, CONFIG_FILE
 from hub_client import HubClient
