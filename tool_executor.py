@@ -167,10 +167,17 @@ class ToolExecutor:
         import pyweixin.WeChatTools as wt
         from pyweixin.WeChatAuto import Messages
 
-        main_window = wt.Navigator.open_dialog_window(friend=target)
-        Messages.send_messages_to_friend(
-            main_window=main_window, messages=[content], send_delay=0.3
+        print(f"[SEND] open_dialog_window('{target[:20]}')...", flush=True)
+        main_window = wt.Navigator.open_dialog_window(
+            friend=target, search_pages=15
         )
+        print(f"[SEND] send_messages_to_friend...", flush=True)
+        Messages.send_messages_to_friend(
+            main_window=main_window,
+            messages=[content],
+            send_delay=0.3,
+        )
+        print(f"[SEND] done", flush=True)
         return True
 
     def _tool_send_message(self, args: dict) -> dict:
