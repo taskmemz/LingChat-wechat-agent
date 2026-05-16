@@ -97,7 +97,11 @@ class ToolExecutor:
 
             def send(target=target, part=part):
                 with wechat_lock:
-                    self._do_send_message(target, part)
+                    try:
+                        self._do_send_message(target, part)
+                        logger.info(f"Sent msg to WeChat [{target[:20]}]")
+                    except Exception as e:
+                        logger.error(f"send_message to [{target[:20]}] failed: {e}")
 
             await self._run_sync(send)
             sent_count += 1
@@ -116,7 +120,11 @@ class ToolExecutor:
             return
 
         target = session_id
-        await self.send_text_to_wechat(session_id, target, text_to_send)
+        try:
+            await self.send_text_to_wechat(session_id, target, text_to_send)
+            logger.info(f"Sent AI reply to WeChat [{session_id}]")
+        except Exception as e:
+            logger.error(f"Failed to send AI reply to WeChat [{session_id}]: {e}")
 
     async def _execute_tool(self, tool_name: str, args: dict) -> Any:
         self._ensure_pyweixin()
