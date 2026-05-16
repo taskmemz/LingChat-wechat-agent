@@ -94,23 +94,46 @@ class ToolExecutor:
     ) -> dict:
         self._ensure_pyweixin()
         parts = split_message(content)
+
+        # 先获取目标窗口（锁外，避免长时间 hold 锁）
+        from pyweixin.WeChatTools import Navigator
+        dialog = None
+        close_after = False
+        if self.monitor:
+            dialog = self.monitor.get_window(target)
+            if dialog is None:
+                dialog = Navigator.open_seperate_dialog_window(
+                    friend=target, close_weixin=False
+                )
+                close_after = True
+        else:
+            dialog = Navigator.open_seperate_dialog_window(
+                friend=target, close_weixin=False
+            )
+            close_after = True
+
+        from pyweixin.utils import send_messages_to_friend
         sent_count = 0
         for part in parts:
-
-            def send(target=target, part=part):
+            def send():
                 with wechat_lock:
                     try:
-                        self._do_send_message(target, part)
+                        send_messages_to_friend(main_window=dialog, messages=[part], send_delay=0.3)
                         logger.info(f"Sent msg to WeChat [{target[:20]}]")
                     except Exception as e:
                         logger.error(f"send_message to [{target[:20]}] failed: {e}")
-
             await self._run_sync(send)
             sent_count += 1
             if len(parts) > 1:
                 await asyncio.sleep(0.5)
 
-        # 通知监听器刷新快照，避免把 AI 回复当作新消息转发
+        if close_after:
+            try:
+                dialog.close()
+            except Exception:
+                pass
+
+        # 通知监听器刷新快照
         if self.monitor and session_id:
             await self.monitor.reset_snapshot(session_id)
 

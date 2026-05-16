@@ -1,5 +1,5 @@
 """monitor_service.py — 独立窗口监听模式
-每个发新消息的联系人开独立窗口，用 listen_on_chat 持续监听。
+每个发新消息的联系人开独立窗口，轮询可见文本检测新消息。
 30 分钟无新消息自动关窗。
 """
 
@@ -17,9 +17,21 @@ from wechat_lock import wechat_lock
 
 logger = logging.getLogger("wechat-agent.monitor")
 
-_IDLE_TIMEOUT = 30 * 60  # 30 分钟闲置自动关窗
-_LISTEN_DURATION = "3s"   # 每次监听的时长
-_SCAN_INTERVAL = 5        # 扫描会话列表的间隔（秒）
+_IDLE_TIMEOUT = 30 * 60
+_SCAN_INTERVAL = 5
+
+_LOCK_TIMEOUT = 8
+
+
+def _lock() -> bool:
+    return wechat_lock.acquire(timeout=_LOCK_TIMEOUT)
+
+
+def _unlock():
+    try:
+        wechat_lock.release()
+    except RuntimeError:
+        pass
 
 
 class MonitorService:
@@ -28,7 +40,6 @@ class MonitorService:
         self.hub = hub
         self._running = False
         self._main_window: Any = None
-        # {contact_name: {"window": WindowSpec, "task": asyncio.Task, "last_msg": float}}
         self._active: dict[str, dict] = {}
 
     async def start(self):
@@ -43,12 +54,11 @@ class MonitorService:
 
     def _init_weixin(self):
         from pyweixin.WeChatTools import Navigator
-        with wechat_lock:
-            try:
-                return Navigator.open_weixin(is_maximize=False)
-            except Exception as e:
-                logger.error(f"open_weixin failed: {e}")
-                return None
+        try:
+            return Navigator.open_weixin(is_maximize=False)
+        except Exception as e:
+            logger.error(f"open_weixin failed: {e}")
+            return None
 
     async def stop(self):
         self._running = False
@@ -61,23 +71,20 @@ class MonitorService:
         self._active.clear()
 
     def get_window(self, contact: str):
-        """返回活跃窗口引用，供 ToolExecutor 复用"""
         entry = self._active.get(contact)
         return entry["window"] if entry else None
 
     async def reset_snapshot(self, contact: str):
-        """AI 回复发出后调用：刷新监听器的快照，避免把回复当新消息转发"""
         if contact not in self._active:
             return
         entry = self._active[contact]
-        loop = asyncio.get_event_loop()
-        snapshot = await loop.run_in_executor(None, self._read_visible, entry["window"])
+        snapshot = await asyncio.get_event_loop().run_in_executor(
+            None, self._read_visible, entry["window"]
+        )
         if contact in self._active:
             self._active[contact]["_snapshot"] = snapshot
 
-    # ============================================================
-    # 扫描循环（轻量，只检测新联系人）
-    # ============================================================
+    # ── 扫描 ──
 
     async def _scan_loop(self):
         while self._running:
@@ -95,7 +102,6 @@ class MonitorService:
             await asyncio.sleep(_SCAN_INTERVAL)
 
     def _do_scan(self) -> list[str]:
-        """扫描会话列表，返回有新消息的联系人名称列表"""
         from pyweixin.utils import scan_for_new_messages
         with wechat_lock:
             try:
@@ -107,12 +113,9 @@ class MonitorService:
                 logger.error(f"scan_for_new_messages: {e}")
                 return []
 
-    # ============================================================
-    # 独立窗口 + 监听
-    # ============================================================
+    # ── 独立窗口 ──
 
     async def _ensure_listener(self, contact: str):
-        """为联系人启动独立窗口监听（如尚未活跃）"""
         if contact in self._active:
             return
 
@@ -132,13 +135,8 @@ class MonitorService:
             logger.warning(f"[LISTENER] open_separate returned None, fallback to main window read")
             await self._fallback_read_once(contact)
             return
+
         logger.info(f"[LISTENER] window opened OK for '{contact}'")
-
-        # 等独立窗口渲染完毕（用 asyncio.sleep 不阻塞事件循环）
-        await asyncio.sleep(2)
-
-        # 先读一次当前可见的消息（触发了扫描的那条）
-        # 等独立窗口渲染完毕（用 asyncio.sleep 不阻塞事件循环）
         await asyncio.sleep(2)
 
         content = await asyncio.get_event_loop().run_in_executor(
@@ -147,66 +145,48 @@ class MonitorService:
         logger.info(f"[LISTENER] first read for '{contact}': {len(content or '')}chars")
         if content:
             now = time.time()
-            self._active[contact] = {"window": dialog, "task": None, "last_msg": now, "_snapshot": content}
+            self._active[contact] = {
+                "window": dialog, "task": None,
+                "last_msg": now, "_snapshot": content,
+            }
             await self._send_user_msg(contact, content)
 
         task = asyncio.create_task(self._listen_task(contact, dialog))
         self._active[contact] = {
-            "window": dialog,
-            "task": task,
-            "last_msg": time.time(),
+            "window": dialog, "task": task, "last_msg": time.time(),
         }
-
-    def _read_visible(self, dialog) -> str:
-        """读取独立窗口里可见的消息文本（直取 List 的 CheckBox 孩子）"""
-        with wechat_lock:
-            try:
-                # ChatSingleWindow 内只有一个 List（聊天消息列表）
-                chat_list = dialog.child_window(control_type="List", found_index=0)
-                if not chat_list.exists(timeout=0.5):
-                    return ""
-                texts = []
-                for cb in chat_list.children(control_type="CheckBox"):
-                    try:
-                        t = cb.window_text().strip()
-                    except Exception:
-                        continue
-                    if t and len(t) > 1:
-                        texts.append(t)
-                return "\n".join(texts[-8:]) if texts else ""
-            except Exception as e:
-                logger.warning(f"read_visible error: {e}")
-                return ""
-                texts = []
-                for ctrl in area.descendants():
-                    try:
-                        t = ctrl.window_text().strip()
-                    except Exception:
-                        continue
-                    if t and len(t) > 1:
-                        texts.append(t)
-                return "\n".join(texts[-8:]) if texts else ""
-            except Exception as e:
-                logger.warning(f"read_visible '{contact}': {e}")
-                return ""
 
     def _open_separate(self, contact: str):
         from pyweixin.WeChatTools import Navigator
-        with wechat_lock:
-            try:
-                return Navigator.open_seperate_dialog_window(
-                    friend=contact, close_weixin=False
-                )
-            except Exception as e:
-                logger.error(f"open_seperate_dialog_window '{contact}': {e}")
-                return None
+        try:
+            return Navigator.open_seperate_dialog_window(
+                friend=contact, close_weixin=False
+            )
+        except Exception as e:
+            logger.error(f"open_separate '{contact}': {e}")
+            return None
+
+    def _read_visible(self, dialog) -> str:
+        try:
+            chat_list = dialog.child_window(control_type="List", found_index=0)
+            if not chat_list.exists(timeout=0.5):
+                return ""
+            texts = []
+            for cb in chat_list.children(control_type="CheckBox"):
+                try:
+                    t = cb.window_text().strip()
+                except Exception:
+                    continue
+                if t and len(t) > 1:
+                    texts.append(t)
+            return "\n".join(texts[-8:]) if texts else ""
+        except Exception as e:
+            logger.warning(f"read_visible error: {e}")
+            return ""
 
     async def _listen_task(self, contact: str, dialog):
-        """轮询独立窗口的可见文本，检测新消息"""
-        # 初始化快照
         if contact in self._active:
             self._active[contact]["_snapshot"] = ""
-
         while self._running and contact in self._active:
             snapshot = await asyncio.get_event_loop().run_in_executor(
                 None, self._read_visible, dialog
@@ -226,67 +206,65 @@ class MonitorService:
             await asyncio.sleep(3)
 
     def _diff_content(self, old: str, new: str) -> str:
-        """对比新旧快照，返回新增的文本行"""
         old_lines = old.split("\n")
         new_lines = new.split("\n")
-        # 新行数相同时无新消息
         if len(new_lines) <= len(old_lines):
             return ""
-        # 返回多出来的行
-        added = new_lines[- (len(new_lines) - len(old_lines)):]
-        return "\n".join(added)
+        return "\n".join(new_lines[-(len(new_lines) - len(old_lines)):])
 
-    # ============================================================
-    # 回退：独立窗口打不开时，直接从主窗口读一次
-    # ============================================================
+    # ── 回退（主窗口读一次）──
 
     async def _fallback_read_once(self, contact: str):
-        """从主窗口读一次消息并转发，不创建监听器"""
         from pyweixin.Uielements import Lists, SideBar, Main_window
 
         def read():
-            with wechat_lock:
-                try:
-                    btn = self._main_window.child_window(**SideBar.Weixin)
-                    if btn.exists(timeout=0.5):
-                        btn.click_input()
-                    sl = self._main_window.child_window(**Main_window.SessionList)
-                    if not sl.exists(timeout=1):
-                        return ""
-                    for item in sl.children(control_type="ListItem"):
-                        try:
-                            aid = item.automation_id().replace("session_item_", "")
-                            if aid == contact:
-                                item.click_input()
-                                break
-                        except Exception:
-                            continue
-                    import time as _t
-                    _t.sleep(1)
-                    area = self._main_window.child_window(**Lists.FriendChatList)
-                    if not area.exists(timeout=2):
-                        return ""
-                    texts = []
-                    for ctrl in area.descendants():
-                        try:
-                            t = ctrl.window_text().strip()
-                        except Exception:
-                            continue
-                        if t and len(t) > 1:
-                            texts.append(t)
-                    return "\n".join(texts[-8:]) if texts else ""
-                except Exception as e:
-                    logger.error(f"fallback read error: {e}")
+            if not _lock():
+                return ""
+            try:
+                btn = self._main_window.child_window(**SideBar.Weixin)
+                if btn.exists(timeout=0.5):
+                    btn.click_input()
+                sl = self._main_window.child_window(**Main_window.SessionList)
+                if not sl.exists(timeout=1):
                     return ""
+                for item in sl.children(control_type="ListItem"):
+                    try:
+                        aid = item.automation_id().replace("session_item_", "")
+                        if aid == contact:
+                            item.click_input()
+                            break
+                    except Exception:
+                        continue
+                import time as _t
+                _t.sleep(1)
+                area = self._main_window.child_window(**Lists.FriendChatList)
+                if not area.exists(timeout=2):
+                    return ""
+                texts = []
+                for ctrl in area.descendants():
+                    try:
+                        t = ctrl.window_text().strip()
+                    except Exception:
+                        continue
+                    if t and len(t) > 1:
+                        texts.append(t)
+                return "\n".join(texts[-8:]) if texts else ""
+            except Exception as e:
+                logger.error(f"fallback read error: {e}")
+                return ""
+            finally:
+                _unlock()
 
         content = await asyncio.get_event_loop().run_in_executor(None, read)
         if content:
-            logger.info(f"[FALLBACK] read {len(content)}chars from main window for '{contact}'")
+            logger.info(f"[FALLBACK] read {len(content)}chars for '{contact}'")
             await self._send_user_msg(contact, content)
+
+    # ── 清理 ──
 
     async def _cleanup_loop(self):
         while self._running:
-            await asyncio.sleep(60)  # 每分钟检查
+            await asyncio.sleep(60)
             now = time.time()
             for contact, info in list(self._active.items()):
                 if now - info["last_msg"] > _IDLE_TIMEOUT:
@@ -298,9 +276,7 @@ class MonitorService:
                     info["task"].cancel()
                     del self._active[contact]
 
-    # ============================================================
-    # 发送消息
-    # ============================================================
+    # ── 发送 ──
 
     async def _send_user_msg(self, sender: str, content: str):
         logger.info(f"→ Hub: [{sender}] {content[:40]}...")
