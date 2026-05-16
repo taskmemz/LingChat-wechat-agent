@@ -680,6 +680,7 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
         newMessageNum=[int(new_message_pattern.search(text).group(1)) for text in newMessageTips]
         return senders,newMessageNum
 
+    import sys as _sys
     not_care=Special_Labels.NotCare
     mute_notifications=Special_Labels.MuteNotifications
     if is_maximize is None:
@@ -687,7 +688,9 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
     if close_weixin is None:
         close_weixin=GlobalConfig.close_weixin
     if main_window is None:
+        print("[DBG] scan: opening weixin", flush=True)
         main_window=Navigator.open_weixin(is_maximize=is_maximize)
+    print("[DBG] scan: clicking sidebar chat", flush=True)
     newMessageSenders=[]
     newMessageNums=[]
     newMessages_dict={}
@@ -704,7 +707,9 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
     session_list.type_keys('{HOME}')
     time.sleep(1)
     # 扫描整个会话列表，不依赖图标 badge 数（免打扰联系人不计入 badge）
+    page = 0
     for _ in range(50):  # 最多翻 50 页，防止死循环
+        page += 1
         listItems=session_list.children(control_type='ListItem')
         time.sleep(delay)
         senders,nums=traverse_messsage_list(listItems)
@@ -713,7 +718,10 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
         newMessages_dict=dict(zip(newMessageSenders,newMessageNums))
         session_list.type_keys('{PGDN}')
         if listItems[-1].window_text()==last_item:
+            print(f"[DBG] scan: done at page {page}, found {len(newMessages_dict)} contacts", flush=True)
             break
+        if page > 1 and page % 5 == 0:
+            print(f"[DBG] scan: page {page} ...", flush=True)
     session_list.type_keys('{HOME}')
     if close_weixin:
         main_window.close()

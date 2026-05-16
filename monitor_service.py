@@ -82,12 +82,18 @@ class MonitorService:
 
     async def _check_new_messages(self):
         def scan(w):
+            import time as _t
             from pyweixin.utils import scan_for_new_messages
+            print("[TRACE] scan: waiting for lock...", flush=True)
+            t0 = _t.time()
             if not _lock():
                 logger.warning("scan: lock timeout")
                 return {}
+            print(f"[TRACE] scan: got lock after {_t.time()-t0:.1f}s", flush=True)
             try:
-                return scan_for_new_messages(main_window=w, close_weixin=False)
+                result = scan_for_new_messages(main_window=w, close_weixin=False)
+                print(f"[TRACE] scan: done in {_t.time()-t0:.1f}s, {len(result)} contacts", flush=True)
+                return result
             except Exception as e:
                 logger.error(f"Scan failed: {e}")
                 return {}
