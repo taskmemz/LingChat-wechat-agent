@@ -117,15 +117,16 @@ class MonitorService:
             return
 
         logger.info(f"[LISTENER] opening window for '{contact}'")
-        try:
-            dialog = await asyncio.get_event_loop().run_in_executor(
-                None, self._open_separate, contact
-            )
-            if dialog is None:
-                return
-        except Exception as e:
-            logger.error(f"Failed to open separate dialog for '{contact}': {e}")
+        dialog = await asyncio.get_event_loop().run_in_executor(
+            None, self._open_separate, contact
+        )
+        if dialog is None:
+            logger.warning(f"[LISTENER] open_separate returned None for '{contact}'")
             return
+        logger.info(f"[LISTENER] window opened OK for '{contact}'")
+
+        # 等独立窗口渲染完毕（用 asyncio.sleep 不阻塞事件循环）
+        await asyncio.sleep(2)
 
         # 先读一次当前可见的消息（触发了扫描的那条）
         # 等独立窗口渲染完毕（用 asyncio.sleep 不阻塞事件循环）

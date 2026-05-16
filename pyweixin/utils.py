@@ -688,9 +688,7 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
     if close_weixin is None:
         close_weixin=GlobalConfig.close_weixin
     if main_window is None:
-        print("[DBG] scan: opening weixin", flush=True)
         main_window=Navigator.open_weixin(is_maximize=is_maximize)
-    print("[DBG] scan: clicking sidebar chat", flush=True)
     newMessageSenders=[]
     newMessageNums=[]
     newMessages_dict={}
