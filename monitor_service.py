@@ -98,11 +98,16 @@ class MonitorService:
     async def _read_messages(self, sender: str) -> str:
         def read():
             import pyweixin.WeChatTools as wt
-            from pyweixin.Uielements import Lists
+            from pyweixin.Uielements import Lists, SideBar
 
             with wechat_lock:
-                dialog = None
                 try:
+                    # 确保回到会话列表视图（上一个 _read_messages 留在了聊天对话框）
+                    main = wt.Navigator.open_weixin(is_maximize=False)
+                    chats_btn = main.child_window(**SideBar.Weixin)
+                    if chats_btn.exists(timeout=1):
+                        chats_btn.click_input()
+
                     dialog = wt.Navigator.open_dialog_window(
                         friend=sender,
                         search_pages=1,
