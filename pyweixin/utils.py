@@ -695,34 +695,26 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
     chats_button.click_input()
     #左上角微信按钮的红色消息提示(\d+条新消息)在FullDescription属性中,
     #只能通过id来获取,id是30159，之前是30007,可能是qt组件映射关系不一样
-    full_desc=chats_button.element_info.element.GetCurrentPropertyValue(30159)
-    session_list=main_window.child_window(**Main_window.SessionList)
-    session_list.type_keys('{HOME}')
-    new_message_num=re.search(r'\d+',full_desc)#正则提取数量
     #微信会话列表内ListItem标准格式:备注\s(已置顶)\s(\d+)条未读\s最后一条消息内容\s时间
     new_message_pattern=Regex_Patterns.newMessage_pattern#只给数量分组.group(1)获取
-    if not new_message_num:return {}
-    if new_message_num:
-        new_message_num=int(new_message_num.group(0))
-        session_list=main_window.child_window(**Main_window.SessionList)
-        session_list.type_keys('{END}')
-        time.sleep(1)
-        last_item=session_list.children(control_type='ListItem')[-1].window_text()
-        session_list.type_keys('{HOME}')
-        time.sleep(1)
-        while sum(newMessages_dict.values())<new_message_num:#当最终的新消息总数之和大于等于实际新消息总数时退出循环
-            #遍历获取带有新消息的ListItem
-            listItems=session_list.children(control_type='ListItem')
-            time.sleep(delay)
-            senders,nums=traverse_messsage_list(listItems)
-            ##提取姓名和数量
-            newMessageNums.extend(nums)
-            newMessageSenders.extend(senders)
-            newMessages_dict=dict(zip(newMessageSenders,newMessageNums))
-            session_list.type_keys('{PGDN}')
-            if listItems[-1].window_text()==last_item:
-                break
-        session_list.type_keys('{HOME}')
+    session_list=main_window.child_window(**Main_window.SessionList)
+    session_list.type_keys('{END}')
+    time.sleep(1)
+    last_item=session_list.children(control_type='ListItem')[-1].window_text()
+    session_list.type_keys('{HOME}')
+    time.sleep(1)
+    # 扫描整个会话列表，不依赖图标 badge 数（免打扰联系人不计入 badge）
+    for _ in range(50):  # 最多翻 50 页，防止死循环
+        listItems=session_list.children(control_type='ListItem')
+        time.sleep(delay)
+        senders,nums=traverse_messsage_list(listItems)
+        newMessageNums.extend(nums)
+        newMessageSenders.extend(senders)
+        newMessages_dict=dict(zip(newMessageSenders,newMessageNums))
+        session_list.type_keys('{PGDN}')
+        if listItems[-1].window_text()==last_item:
+            break
+    session_list.type_keys('{HOME}')
     if close_weixin:
         main_window.close()
     return newMessages_dict
