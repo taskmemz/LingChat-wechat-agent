@@ -157,9 +157,11 @@ class ToolExecutor:
         session_id = payload.get("session_id", "")
         content = payload.get("content", "")
         segments = payload.get("segments", [])
+        logger.info(f"handle_ai_reply: session='{session_id}' content_len={len(content)} segs={len(segments)}")
 
         text_to_send = content or "\n".join(segments) if segments else ""
         if not text_to_send:
+            logger.warning("handle_ai_reply: nothing to send")
             return
 
         target = session_id
