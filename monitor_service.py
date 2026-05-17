@@ -41,6 +41,11 @@ class MonitorService:
         self._running = False
         self._main_window: Any = None
         self._active: dict[str, dict] = {}
+        # 白名单 & 批处理
+        self.whitelist: dict[str, dict] = {}
+        self.batch_timeout: int = 6
+        self._pending_batches: dict[str, dict] = {}  # contact -> {"timer": Task, "msgs": [str]}
+        self._prev_context: str = ""
 
     async def start(self):
         self._running = True
@@ -83,6 +88,11 @@ class MonitorService:
         )
         if contact in self._active:
             self._active[contact]["_snapshot"] = snapshot
+
+    def apply_config(self, payload: dict):
+        self.whitelist = payload.get("whitelist", {})
+        self.batch_timeout = payload.get("batch_timeout", 6)
+        logger.info(f"Config: {len(self.whitelist)} whitelisted, timeout={self.batch_timeout}s")
 
     # ── 扫描 ──
 
@@ -292,7 +302,55 @@ class MonitorService:
     # ── 发送 ──
 
     async def _send_user_msg(self, sender: str, content: str):
-        logger.info(f"→ Hub: [{sender}] {content[:40]}...")
+        # 白名单 → 立即发送
+        if sender in self.whitelist:
+            logger.info(f"→ Hub (immediate): [{sender}] {content[:40]}...")
+            await self._do_send(sender, content)
+            return
+
+        # 非白名单 → 积攒后发送
+        batch = self._pending_batches.get(sender)
+        now = time.time()
+        if batch is None:
+            batch = {"msgs": [], "timer": None, "start": now}
+            self._pending_batches[sender] = batch
+
+        batch["msgs"].append(content)
+
+        if batch["timer"] is None:
+            timeout = self.batch_timeout
+            # 创建定时器
+            async def flush():
+                await asyncio.sleep(timeout)
+                await self._flush_batch(sender)
+            batch["timer"] = asyncio.create_task(flush())
+            logger.info(f"[BATCH] start {timeout}s timer for '{sender}'")
+
+    async def _flush_batch(self, sender: str):
+        batch = self._pending_batches.pop(sender, None)
+        if not batch or not batch["msgs"]:
+            return
+
+        msgs = batch["msgs"]
+        # 合并多条消息
+        if len(msgs) == 1:
+            combined = msgs[0]
+        else:
+            combined = "\n".join(msgs)
+            logger.info(f"[BATCH] merged {len(msgs)} msgs for '{sender}'")
+
+        # 添加上下文去重提示
+        ctx = ""
+        if self._prev_context and combined:
+            ctx = "\n\n{注意：此前对话可能有部分重复上下文，AI自行判断。}"
+            self._prev_context = combined
+        elif combined:
+            self._prev_context = combined
+
+        await self._do_send(sender, combined + ctx)
+
+    async def _do_send(self, sender: str, text: str):
+        logger.info(f"→ Hub: [{sender}] {text[:40]}...")
         await self.hub.send(
             Envelope(
                 type=MessageType.USER_MESSAGE,
@@ -300,7 +358,7 @@ class MonitorService:
                 payload={
                     "session_id": sender,
                     "user_id": sender,
-                    "content": content,
+                    "content": text,
                     "message_type": "text",
                 },
             )

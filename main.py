@@ -110,6 +110,8 @@ async def main():
             await executor.execute(envelope)
         elif envelope.type == MessageType.AI_REPLY:
             await executor.handle_ai_reply(envelope)
+        elif envelope.type == MessageType.CONFIG:
+            monitor.apply_config(envelope.payload)
         elif envelope.type == MessageType.ERROR:
             logger.error(f"Error from Hub: {envelope.payload}")
         else:

@@ -21,6 +21,7 @@ class MessageType(str, Enum):
     CONTEXT_REQUEST = "context_request"
     CONTEXT_RESPONSE = "context_response"
     CHANNEL_STATE = "channel_state"
+    CONFIG = "config"
     ERROR = "error"
 
 
