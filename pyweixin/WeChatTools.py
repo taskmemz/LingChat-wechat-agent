@@ -1302,8 +1302,16 @@ class Navigator():
             search_result.click_input()
             time.sleep(1)
             if is_contact:
-                friend_listitem=[listitem for listitem in session_list.children(control_type='ListItem') if listitem.is_selected()][0]
-                friend_listitem.double_click_input()
+                selected=[listitem for listitem in session_list.children(control_type='ListItem') if listitem.is_selected()]
+                if selected:
+                    selected[0].double_click_input()
+                else:
+                    # 没选中任何会话项（如 emoji 名搜索），直接点最近一次消息
+                    listItems=session_list.children(control_type='ListItem')
+                    if listItems:
+                        listItems[0].click_input()
+                    import time as _t
+                    _t.sleep(0.5)
             dialog_window=Tools.move_window_to_center(Window={'class_name':'mmui::ChatSingleWindow','title':f'{friend}'})
             if select:Tools.select_chatList(dialog_window)
             if window_minimize:

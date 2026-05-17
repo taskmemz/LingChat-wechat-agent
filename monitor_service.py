@@ -252,8 +252,9 @@ class MonitorService:
                     return ""
                 for item in sl.children(control_type="ListItem"):
                     try:
-                        aid = item.automation_id().replace("session_item_", "")
-                        if aid == contact:
+                        aid = item.automation_id()
+                        # 匹配: session_item_{contact_name}，部分匹配以防 emoji 编码问题
+                        if aid.startswith("session_item_") and contact in aid:
                             item.click_input()
                             break
                     except Exception:
