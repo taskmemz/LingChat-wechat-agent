@@ -431,7 +431,8 @@ class Messages():
         if send_delay is None:send_delay=GlobalConfig.send_delay
         edit_area=main_window.child_window(**Edits.CurrentChatEdit)
         if not edit_area.exists(timeout=0.1):
-            print('非正常好友,无法发送消息!')
+            import logging as _lg
+            _lg.getLogger("pyweixin").error(f"edit area not found in window '{main_window.window_text()}'")
             return 
         for message in messages:
             if 0<len(message)<2000:

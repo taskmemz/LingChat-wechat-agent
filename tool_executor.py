@@ -101,6 +101,7 @@ class ToolExecutor:
         close_after = False
         if self.monitor:
             dialog = self.monitor.get_window(target)
+            logger.info(f"send: get_window('{target[:20]}') = {'found' if dialog else 'None'}")
             if dialog is None:
                 try:
                     dialog = await asyncio.get_event_loop().run_in_executor(
