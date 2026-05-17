@@ -41,11 +41,9 @@ class MonitorService:
         self._running = False
         self._main_window: Any = None
         self._active: dict[str, dict] = {}
-        # 白名单 & 批处理
+        # 白名单
         self.whitelist: dict[str, dict] = {}
         self.batch_timeout: int = 6
-        self._pending_batches: dict[str, dict] = {}  # contact -> {"timer": Task, "msgs": [str]}
-        self._prev_context: str = ""
 
     async def start(self):
         self._running = True
@@ -126,6 +124,11 @@ class MonitorService:
     # ── 独立窗口 ──
 
     async def _ensure_listener(self, contact: str):
+        # 非白名单 → 直接跳过，不处理
+        if contact not in self.whitelist:
+            logger.info(f"[SKIP] non-whitelisted '{contact}'")
+            return
+
         if contact in self._active:
             return
 
@@ -147,7 +150,12 @@ class MonitorService:
             return
 
         logger.info(f"[LISTENER] window opened OK for '{contact}'")
-        await asyncio.sleep(2)
+
+        # 随机等待 4-6 秒，让消息积攒
+        import random
+        wait_sec = random.uniform(5, 8)
+        logger.info(f"[LISTENER] waiting {wait_sec:.1f}s for messages to accumulate...")
+        await asyncio.sleep(wait_sec)
 
         content = await asyncio.get_event_loop().run_in_executor(
             None, self._read_visible, dialog
@@ -159,7 +167,7 @@ class MonitorService:
                 "window": dialog, "task": None,
                 "last_msg": now, "_snapshot": content,
             }
-            await self._send_user_msg(contact, content)
+            await self._do_send(contact, content)
 
         task = asyncio.create_task(self._listen_task(contact, dialog))
         self._active[contact] = {
@@ -200,7 +208,7 @@ class MonitorService:
                         continue
                     if t not in _skip and len(t) > 1:
                         texts.append(t)
-            return "\n".join(texts[-8:]) if texts else ""
+            return "\n".join(texts[-20:]) if texts else ""
         except Exception as e:
             logger.warning(f"read_visible error: {e}")
             return ""
@@ -222,7 +230,7 @@ class MonitorService:
                 if added:
                     entry["last_msg"] = time.time()
                     entry["_snapshot"] = snapshot
-                    await self._send_user_msg(contact, added)
+                    await self._do_send(contact, added)
             else:
                 entry["_snapshot"] = snapshot or old
             await asyncio.sleep(3)
@@ -237,6 +245,8 @@ class MonitorService:
     # ── 回退（主窗口读一次）──
 
     async def _fallback_read_once(self, contact: str):
+        if contact not in self.whitelist:
+            return
         from pyweixin.Uielements import Lists, SideBar, Main_window
 
         def read():
@@ -271,7 +281,7 @@ class MonitorService:
                         continue
                     if t and len(t) > 1:
                         texts.append(t)
-                return "\n".join(texts[-8:]) if texts else ""
+                return "\n".join(texts[-20:]) if texts else ""
             except Exception as e:
                 logger.error(f"fallback read error: {e}")
                 return ""
@@ -281,7 +291,7 @@ class MonitorService:
         content = await asyncio.get_event_loop().run_in_executor(None, read)
         if content:
             logger.info(f"[FALLBACK] read {len(content)}chars for '{contact}'")
-            await self._send_user_msg(contact, content)
+            await self._do_send(contact, content)
 
     # ── 清理 ──
 
@@ -300,54 +310,6 @@ class MonitorService:
                     del self._active[contact]
 
     # ── 发送 ──
-
-    async def _send_user_msg(self, sender: str, content: str):
-        # 白名单 → 立即发送
-        if sender in self.whitelist:
-            logger.info(f"→ Hub (immediate): [{sender}] {content[:40]}...")
-            await self._do_send(sender, content)
-            return
-
-        # 非白名单 → 积攒后发送
-        batch = self._pending_batches.get(sender)
-        now = time.time()
-        if batch is None:
-            batch = {"msgs": [], "timer": None, "start": now}
-            self._pending_batches[sender] = batch
-
-        batch["msgs"].append(content)
-
-        if batch["timer"] is None:
-            timeout = self.batch_timeout
-            # 创建定时器
-            async def flush():
-                await asyncio.sleep(timeout)
-                await self._flush_batch(sender)
-            batch["timer"] = asyncio.create_task(flush())
-            logger.info(f"[BATCH] start {timeout}s timer for '{sender}'")
-
-    async def _flush_batch(self, sender: str):
-        batch = self._pending_batches.pop(sender, None)
-        if not batch or not batch["msgs"]:
-            return
-
-        msgs = batch["msgs"]
-        # 合并多条消息
-        if len(msgs) == 1:
-            combined = msgs[0]
-        else:
-            combined = "\n".join(msgs)
-            logger.info(f"[BATCH] merged {len(msgs)} msgs for '{sender}'")
-
-        # 添加上下文去重提示
-        ctx = ""
-        if self._prev_context and combined:
-            ctx = "\n\n{注意：此前对话可能有部分重复上下文，AI自行判断。}"
-            self._prev_context = combined
-        elif combined:
-            self._prev_context = combined
-
-        await self._do_send(sender, combined + ctx)
 
     async def _do_send(self, sender: str, text: str):
         logger.info(f"→ Hub: [{sender}] {text[:40]}...")
