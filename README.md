@@ -19,7 +19,7 @@ pip install -r requirements.txt
 python main.py
 
 # 3. Enter Cloud Hub address when prompted
-Cloud Hub 地址: ws://192.168.2.109:8766/ws
+Cloud Hub 地址: ws://your-address:port/ws
 ```
 
 The address is saved to `config.json` for subsequent runs.
