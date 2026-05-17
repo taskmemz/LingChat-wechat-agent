@@ -125,13 +125,13 @@ class ToolExecutor:
                 return {"sent": 0, "parts": parts}
             close_after = True
 
-        from pyweixin.utils import send_messages_to_friend
+        from pyweixin.utils import Messages as _UM
         sent_count = 0
         for part in parts:
             def send():
                 with wechat_lock:
                     try:
-                        send_messages_to_friend(main_window=dialog, messages=[part], send_delay=0.3)
+                        _UM.send_messages_to_friend(main_window=dialog, messages=[part], send_delay=0.3)
                         logger.info(f"Sent msg to WeChat [{target[:20]}]")
                     except Exception as e:
                         logger.error(f"send_message to [{target[:20]}] failed: {e}")
@@ -209,7 +209,7 @@ class ToolExecutor:
     # ========== Tool implementations ==========
 
     def _do_send_message(self, target: str, content: str):
-        from pyweixin.utils import send_messages_to_friend
+        from pyweixin.utils import Messages as _UM
 
         # 优先复用监听器的独立窗口
         dialog = None
@@ -223,7 +223,7 @@ class ToolExecutor:
             )
             close_after = True
 
-        send_messages_to_friend(
+        _UM.send_messages_to_friend(
             main_window=dialog,
             messages=[content],
             send_delay=0.3,
