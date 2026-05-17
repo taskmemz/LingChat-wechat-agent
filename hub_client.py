@@ -110,7 +110,7 @@ class HubClient:
 
     async def _heartbeat_loop(self):
         while not self._stop:
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
             try:
                 ping = Envelope(
                     type=MessageType.PING,
