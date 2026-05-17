@@ -716,10 +716,7 @@ def scan_for_new_messages(main_window:WindowSpecification=None,delay:float=0.3,i
         newMessages_dict=dict(zip(newMessageSenders,newMessageNums))
         session_list.type_keys('{PGDN}')
         if listItems[-1].window_text()==last_item:
-            print(f"[DBG] scan: done at page {page}, found {len(newMessages_dict)} contacts", flush=True)
             break
-        if page > 1 and page % 5 == 0:
-            print(f"[DBG] scan: page {page} ...", flush=True)
     session_list.type_keys('{HOME}')
     if close_weixin:
         main_window.close()

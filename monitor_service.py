@@ -167,10 +167,20 @@ class MonitorService:
             return None
 
     def _read_visible(self, dialog) -> str:
+        """读取独立窗口里可见的消息文本"""
         try:
-            chat_list = dialog.child_window(control_type="List", found_index=0)
-            if not chat_list.exists(timeout=0.5):
-                return ""
+            texts = []
+            for ctrl in dialog.descendants():
+                try:
+                    t = ctrl.window_text().strip()
+                except Exception:
+                    continue
+                if t and len(t) > 1:
+                    texts.append(t)
+            return "\n".join(texts[-8:]) if texts else ""
+        except Exception as e:
+            logger.warning(f"read_visible error: {e}")
+            return ""
             texts = []
             for cb in chat_list.children(control_type="CheckBox"):
                 try:
