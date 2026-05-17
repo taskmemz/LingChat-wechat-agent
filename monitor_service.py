@@ -167,18 +167,29 @@ class MonitorService:
             return None
 
     def _read_visible(self, dialog) -> str:
-        """读取独立窗口里可见的消息文本（过滤窗口控件标签）"""
-        # 微信窗口的固定控件文本，不是聊天消息
-        _CHROME = {"置顶", "最小化", "最大化", "关闭", "×", "消息", ""}
+        """读取独立窗口里的消息文本"""
         try:
             texts = []
-            for ctrl in dialog.descendants():
-                try:
-                    t = ctrl.window_text().strip()
-                except Exception:
-                    continue
-                if t not in _CHROME and len(t) > 1:
-                    texts.append(t)
+            # 找聊天消息 List（第一个 List 控件）
+            chat_list = dialog.descendants(control_type="List")
+            if chat_list:
+                for ctrl in chat_list[0].descendants():
+                    try:
+                        t = ctrl.window_text().strip()
+                    except Exception:
+                        continue
+                    if len(t) > 1:
+                        texts.append(t)
+            # 回退：全窗口扫描（过滤输入区标签）
+            if not texts:
+                _skip = {"微信语音输入文字", "发语音 ( 按住右 Alt )", "发送", "图片", ""}
+                for ctrl in dialog.descendants():
+                    try:
+                        t = ctrl.window_text().strip()
+                    except Exception:
+                        continue
+                    if t not in _skip and len(t) > 1:
+                        texts.append(t)
             return "\n".join(texts[-8:]) if texts else ""
         except Exception as e:
             logger.warning(f"read_visible error: {e}")
