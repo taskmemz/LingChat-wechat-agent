@@ -91,10 +91,12 @@ class HubClient:
                     pass
                 else:
                     if self._on_message:
-                        try:
-                            await self._on_message(envelope)
-                        except Exception as e:
-                            logger.error(f"on_message handler error: {e}", exc_info=True)
+                        async def _safe_on(msg):
+                            try:
+                                await self._on_message(msg)
+                            except Exception as e:
+                                logger.error(f"on_message error: {e}")
+                        asyncio.create_task(_safe_on(envelope))
 
             except websockets.WebSocketException:
                 break

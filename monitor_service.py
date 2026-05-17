@@ -167,7 +167,9 @@ class MonitorService:
             return None
 
     def _read_visible(self, dialog) -> str:
-        """读取独立窗口里可见的消息文本"""
+        """读取独立窗口里可见的消息文本（过滤窗口控件标签）"""
+        # 微信窗口的固定控件文本，不是聊天消息
+        _CHROME = {"置顶", "最小化", "最大化", "关闭", "×", "消息", ""}
         try:
             texts = []
             for ctrl in dialog.descendants():
@@ -175,7 +177,7 @@ class MonitorService:
                     t = ctrl.window_text().strip()
                 except Exception:
                     continue
-                if t and len(t) > 1:
+                if t not in _CHROME and len(t) > 1:
                     texts.append(t)
             return "\n".join(texts[-8:]) if texts else ""
         except Exception as e:
