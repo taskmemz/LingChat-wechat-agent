@@ -435,12 +435,12 @@ class Messages():
             _lg.getLogger("pyweixin").error(f"edit area not found in window '{main_window.window_text()}'")
             return 
         for message in messages:
-            if 0<len(message)<2000:
+            if 0 < len(message) <= 2000:
                 edit_area.click_input()
                 edit_area.set_text(message)
                 time.sleep(send_delay)
                 pyautogui.hotkey('alt','s',_pause=False)
-            elif len(message)>2000:#字数超过200字发送txt文件
+            elif len(message) > 2000:#字数超过200字发送txt文件
                 SystemSettings.convert_long_text_to_txt(message)
                 pyautogui.hotkey('ctrl','v',_pause=False)
                 time.sleep(send_delay)

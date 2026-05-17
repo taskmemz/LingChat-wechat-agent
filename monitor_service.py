@@ -194,18 +194,7 @@ class MonitorService:
         except Exception as e:
             logger.warning(f"read_visible error: {e}")
             return ""
-            texts = []
-            for cb in chat_list.children(control_type="CheckBox"):
-                try:
-                    t = cb.window_text().strip()
-                except Exception:
-                    continue
-                if t and len(t) > 1:
-                    texts.append(t)
-            return "\n".join(texts[-8:]) if texts else ""
-        except Exception as e:
-            logger.warning(f"read_visible error: {e}")
-            return ""
+
 
     async def _listen_task(self, contact: str, dialog):
         if contact in self._active:
