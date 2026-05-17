@@ -95,21 +95,33 @@ class ToolExecutor:
         self._ensure_pyweixin()
         parts = split_message(content)
 
-        # 先获取目标窗口（锁外，避免长时间 hold 锁）
+        # 先获取目标窗口（放 executor 里，不阻塞事件循环）
         from pyweixin.WeChatTools import Navigator
         dialog = None
         close_after = False
         if self.monitor:
             dialog = self.monitor.get_window(target)
             if dialog is None:
-                dialog = Navigator.open_seperate_dialog_window(
-                    friend=target, close_weixin=False
-                )
+                try:
+                    dialog = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: Navigator.open_seperate_dialog_window(
+                            friend=target, close_weixin=False
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f"open_seperate_dialog_window for reply failed: {e}")
+                    return {"sent": 0, "parts": parts}
                 close_after = True
         else:
-            dialog = Navigator.open_seperate_dialog_window(
-                friend=target, close_weixin=False
-            )
+            try:
+                dialog = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: Navigator.open_seperate_dialog_window(
+                        friend=target, close_weixin=False
+                    )
+                )
+            except Exception as e:
+                logger.error(f"open_seperate_dialog_window for reply failed: {e}")
+                return {"sent": 0, "parts": parts}
             close_after = True
 
         from pyweixin.utils import send_messages_to_friend
